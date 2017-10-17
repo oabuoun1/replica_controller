@@ -1,0 +1,18 @@
+Client: Replica_Contoller, Server: Task Dispatcher
+----------------------------------------
+GET	/query/tc
+GET	/query/utc
+GET	/query/dtc
+GET	/query/ftc
+GET	/query/replica_count
+
+
+Client: replica, Server: Task Dispatcher
+----------------------------------------
+GET	/task/get
+GET /replica/register
+
+POST /task/result
+POST /task/finished
+POST /task/stillalive
+
