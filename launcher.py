@@ -4,7 +4,6 @@ import argparse, time, sys
 from pprint import pprint
 from threading import Thread
 from pathlib import Path
-import dispatcher 
 
 import dispatcher_http_agent, replica_controller
 
@@ -37,10 +36,8 @@ def getArgs():
 if __name__ == "__main__":
     args = getArgs()
     print(args)
-    dispatcher_http_agent_instance = dispatcher_http_agent.Dispatcher_HTTP_Agent()
-
-    dispatcher_http_agent_thread = Thread(target = dispatcher_http_agent_instance.start)
-    dispatcher_http_agent_thread.start()
+    dispatcher_http_agent_instance = dispatcher_http_agent.Dispatcher_HTTP_Agent(args)
+    dispatcher_http_agent_instance.connect()
 
     replica_controller_instance = replica_controller.Replica_controller(args, dispatcher_http_agent_instance)
 

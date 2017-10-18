@@ -1,129 +1,90 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import urllib.parse, json
+import http.client, urllib.parse, urllib.request, time, json, argparse, sys, random, datetime
 from pprint import pprint
+from threading import Lock
 
-task_manager = None
-replica_manager = None
+class Dispatcher_HTTP_Agent:
+    self.lock = Lock()
 
-class Dispatcher_HTTP_Agent(BaseHTTPRequestHandler):
-    def _set_headers(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
+    def __init__(self, args):
+        self.server = args.server if (args.server != None) else "127.0.0.1" 
+        self.port = args.port if (args.port != None) else 8777
+        self.url =  self.server + ":" + str(self.port)
+        self.conn = None
+        self.finished = False
+        self.conn_status = 0 # disconnected
 
-    def check_tasks(self, request_data):
-        task = task_manager.get_undispatched_task(request_data)
-        if (task != None):
-            f = open(task["json"], 'r')
-            json_data = f.read()
-            response = {"task_id": task['id'],"data": json_data }
-            #print("**********************************")
-            #print(response)
-            #print("**********************************")
-            binary = bytes(json.dumps(response), "utf-8")
-        else :
-            task = task_manager.get_delayed_dispatched_task(request_data)
-            if (task != None):
-                f = open(task["json"], 'r')
-                json_data = f.read()
-                response = {"task_id": task['id'],"data": json_data }
-                print("**********************************")
-                print(response)
-                print("**********************************")
-                binary = bytes(json.dumps(response), "utf-8")
-            else:
-                response = "shutdown_now"
-                binary = bytes(response,"utf-8")
-        return binary
-
-    def do_GET(self):
-        global task_manager, replica_manager
-        data = None
-        binary = None
-
+    def parse_response(self, data):
         try:
-            content_length = int(self.headers['Content-Length']) # <--- Gets the size of data
-            data = urllib.parse.parse_qs(self.rfile.read(content_length).decode('utf-8'))
-        except :
-            data = ""
+            data_as_json = json.loads(str(data, "utf-8"))
+            print("data_as_json : " + str(data_as_json))
+            task_id = data_as_json["task_id"]
+            print("TaskID:" + task_id)
+            task_data = data_as_json["data"]
+            print("task_data : " + str(task_data))
+            json_object = json.loads(task_data)
+            print("I got a new task:")
+            print(json_object)
+            print("-----------------------------------------------------")
+            return True, json_object
+            #do the task
 
-        if (self.path == '/task/get'):
-            print("******************************************")
-            print("A replica is asking for a job:" + str(data) )
-            print("******************************************")
-            binary = self.check_tasks(data)
-        elif (self.path == '/replica/register'):
-            print("A new replica has just joined the infra")
-            method = getattr(replica_manager, 'register')
+        except ValueError:
+            task_data_str = str(data, "utf-8")
+            print("It is a direct command :" + task_data_str  + ":")
+            print("-----------------------------------------------------")
+            return False, task_data_str
 
-            replica_id = method(self.client_address) 
-            print("replica_id : " + str(replica_id))
-            response = {"replica_id": str(replica_id) }
-            #print(response)
-            binary = bytes(json.dumps(response),"utf-8")
-            #print("")
-        else:
-            print("unrecognized oprtation")
 
-        self._set_headers()
-        self.wfile.write(binary)
+    def http_get(self, url, request_data = {}):
+        #request_data = {'replica_id' : replica_id}
+        self.lock.acquire()
+        while True:
+            try:
+                conn.request("GET",url, urllib.parse.urlencode(request_data))
+                response = self.conn.getresponse()
+                print(response.status, response.reason)
+                data = response.read()  # This will return entire content.
+                self.lock.release() #release lock
+                print("data:" + str(data))
+                return parse_response(data)
+            except:
+                self.lock.release() #release lock
+                self.connect()
 
-    def do_HEAD(self):
-        self._set_headers()
-        
-    def do_POST(self):
-        #pprint(vars(self))
-        # Doesn't do anything with posted data
-        content_length = int(self.headers['Content-Length']) # <--- Gets the size of data
-        packet = urllib.parse.parse_qs(self.rfile.read(content_length).decode('utf-8'))
-        data_back = ""
-        #print("packet : " + str(packet) )
-        #post_data = self.rfile.read(content_length) # <--- Gets the data itself
+    def add_task(self, task):
+        return 
 
-        if (self.path == '/task/result'):
-            #print(packet)
-            #print("Result -----------------------------------------")
-            data_back = task_manager.save_result(packet['replica_id'][0],packet['data'][0])
-        elif (self.path == '/task/finished'):
-            #print(packet)
-            print("Finished -----------------------------------------")
-            data_back = task_manager.task_finished(packet['replica_id'][0],packet['data'][0])
-        elif (self.path == '/replica/still_alive'):
-            #print(packet)
-            print("Still_alive -----------------------------------------")
-            data_back = replica_manager.still_alive(packet['replica_id'][0],packet['data'][0])
-        
-        self._set_headers()
-        self.wfile.write(bytes(str(data_back), "utf-8"))
-        '''
-        self._set_headers()
-        t = "<html><body><h1>" + str(data)  + "</h1></body></html>"
-        self.wfile.write(bytes(t, "utf-8"))
-        f = open('index.html', 'a')
-        f.write("Received from : ")
-        f.write(self.client_address[0])
-        f.write(":")
-        f.write(str(self.client_address[1]))
-        f.write(" , Data: ")
-        f.write(str(data))
-        f.write("<br>\n")
-        f.close()
-        '''
+    def get_task_count(self):
+        return http_get("/query/tc")
 
-def start(task_manager1, replica_manager1, port=8777):
-    global task_manager, replica_manager
-    task_manager = task_manager1
-    replica_manager = replica_manager1
+    def get_undispatched_count(self):
+        return http_get("/query/utc")
 
-    server_address = ('', port)
-    httpd = HTTPServer(server_address, Dispatcher_HTTP_Agent)
-    print('Starting httpd...' + str(port))
-    
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("*************************************")
-        pass
+    def get_dispatched_count(self):
+        return http_get("/query/dtc")
 
-    httpd.server_close()
-    print(time.asctime(), "Server Stops - %s:%s" % (hostName, hostPort))
+    def get_finished_count(self):
+        return http_get("/query/ftc")
+
+    def disconnected(self):
+        try:
+            self.conn.disconnect()
+        except:
+            print("Problem in disconnecting from server, exiting anyway")
+
+    def connect(self):
+        print("Trying to connect to " + self.url)
+        index = 0
+        while True:
+            try:
+                self.conn = http.client.HTTPConnection(url)
+                self.conn.connect()
+                print(self.conn)
+                self.conn_status = 1 # Connected
+                break
+            except:
+                print("Try " + str(index) + ": Connection failed to the server's URL " + url)
+                index += 1
+                self.conn_status = 0 # disconnected
+                time.sleep(5)
+        print("Connected to " + url + " successfully !")

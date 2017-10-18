@@ -13,8 +13,8 @@ class Replica_Manager:
     replicas = {}
     index = 0
 
-    def __init__(self, args, var_updater):
-        self.var_updater = var_updater
+    def __init__(self, args, dispatcher_http_agent):
+        self.dispatcher_http_agent = dispatcher_http_agent
         self.IMAGE = args.image
         self.SERVER = args.server
         self.PORT = args.port
@@ -42,7 +42,7 @@ class Replica_Manager:
     def JOB_DEADLINE_SET(self, jdl):
         assert isinstance(jdl, int)
         self.JOB_DEADLINE = jdl
-        self.SIMULTANEOUS_REPLICAS_NEEDED = math.ceil((self.var_updater.get_task_count() * self.TASK_DURATION) / self.JOB_DEADLINE)
+        self.SIMULTANEOUS_REPLICAS_NEEDED = math.ceil((self.dispatcher_http_agent.get_task_count() * self.TASK_DURATION) / self.JOB_DEADLINE)
         print(" /////////////// SRN = " + str(self.SIMULTANEOUS_REPLICAS_NEEDED) + " ////////////////////")
         if (self.SIMULTANEOUS_REPLICAS_NEEDED < self.MIN_REPLICAS_ALLOWED):
             self.SIMULTANEOUS_REPLICAS_NEEDED = self.MIN_REPLICAS_ALLOWED
@@ -93,7 +93,7 @@ class Replica_Manager:
         text += "MAX " + str(self.MAX_REPLICAS_ALLOWED) + " | "
         text += "ST  " + str(self.STARTING_TIME_GET()) + " | "
         text += "RT  " + str(self.REMAINING_TIME()) + "\n"
-        text += str(self.var_updater)
+        text += str(self.dispatcher_http_agent)
         now = time.time()
         text += "Replicas : " + str([{key, self.replicas[key]["last_still_alive_at"], now - self.replicas[key]["last_still_alive_at"]} for key in self.replicas.keys()]) 
         return text
@@ -159,8 +159,8 @@ class Replica_Manager:
 
     def start(self):
         while True:
-            if (self.var_updater.get_undispatched_count() > 0):
-                print("TC > 0")
+            if (self.dispatcher_http_agent.get_undispatched_count() > 0):
+                print("UTC > 0")
                 if (self.replica_count() < self.SIMULTANEOUS_REPLICAS_NEEDED):
                     print("RC < SRN")
                     print("Adding a replica")
@@ -169,11 +169,11 @@ class Replica_Manager:
                     pass
                 else:
                     print("RC >= SRN")
-                    if (self.SIMULTANEOUS_REPLICAS_NEEDED > self.var_updater.get_dispatched_count()):
+                    if (self.SIMULTANEOUS_REPLICAS_NEEDED > self.dispatcher_http_agent.get_dispatched_count()):
                         pass
                     else:                    
-                        if((self.var_updater.get_undispatched_count() * self.TASK_DURATION) > self.REMAINING_TIME()):
-                            print("TC*TD > RT")
+                        if((self.dispatcher_http_agent.get_undispatched_count() * self.TASK_DURATION) > self.REMAINING_TIME()):
+                            print("UTC*TD > RT")
                             if (self.SIMULTANEOUS_REPLICAS_NEEDED < self.MAX_REPLICAS_ALLOWED):
                                 print("SRN < MAX")
                                 self.SIMULTANEOUS_REPLICAS_NEEDED_INCREASE()
@@ -182,7 +182,7 @@ class Replica_Manager:
                                 print("SRN >= MAX")
                                 pass
                         else:
-                            print("TC*TD <= RT")
+                            print("UTC*TD <= RT")
                             if (self.SIMULTANEOUS_REPLICAS_NEEDED >= self.MAX_REPLICAS_ALLOWED):
                                 print("SRN >= MAX")
                                 self.SIMULTANEOUS_REPLICAS_NEEDED_DECREASE()
@@ -190,7 +190,7 @@ class Replica_Manager:
                                 pass
             else:
                 print("UTC <= 0")
-                if (self.var_updater.get_finished_count() == self.var_updater.get_task_count()):
+                if (self.dispatcher_http_agent.get_finished_count() == self.dispatcher_http_agent.get_task_count()):
                     print("TC == FTC")
                     break 
                 else:
