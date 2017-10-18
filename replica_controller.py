@@ -13,8 +13,8 @@ class Replica_Manager:
     replicas = {}
     index = 0
 
-    def __init__(self, args, task_manager):
-        self.task_manager = task_manager
+    def __init__(self, args, var_updater):
+        self.var_updater = var_updater
         self.IMAGE = args.image
         self.SERVER = args.server
         self.PORT = args.port
@@ -42,7 +42,7 @@ class Replica_Manager:
     def JOB_DEADLINE_SET(self, jdl):
         assert isinstance(jdl, int)
         self.JOB_DEADLINE = jdl
-        self.SIMULTANEOUS_REPLICAS_NEEDED = math.ceil((self.task_manager.get_task_count() * self.TASK_DURATION) / self.JOB_DEADLINE)
+        self.SIMULTANEOUS_REPLICAS_NEEDED = math.ceil((self.var_updater.get_task_count() * self.TASK_DURATION) / self.JOB_DEADLINE)
         print(" /////////////// SRN = " + str(self.SIMULTANEOUS_REPLICAS_NEEDED) + " ////////////////////")
         if (self.SIMULTANEOUS_REPLICAS_NEEDED < self.MIN_REPLICAS_ALLOWED):
             self.SIMULTANEOUS_REPLICAS_NEEDED = self.MIN_REPLICAS_ALLOWED
@@ -93,7 +93,7 @@ class Replica_Manager:
         text += "MAX " + str(self.MAX_REPLICAS_ALLOWED) + " | "
         text += "ST  " + str(self.STARTING_TIME_GET()) + " | "
         text += "RT  " + str(self.REMAINING_TIME()) + "\n"
-        text += str(self.task_manager)
+        text += str(self.var_updater)
         now = time.time()
         text += "Replicas : " + str([{key, self.replicas[key]["last_still_alive_at"], now - self.replicas[key]["last_still_alive_at"]} for key in self.replicas.keys()]) 
         return text
@@ -159,7 +159,7 @@ class Replica_Manager:
 
     def start(self):
         while True:
-            if (self.task_manager.get_undispatched_count() > 0):
+            if (self.var_updater.get_undispatched_count() > 0):
                 print("TC > 0")
                 if (self.replica_count() < self.SIMULTANEOUS_REPLICAS_NEEDED):
                     print("RC < SRN")
@@ -169,10 +169,10 @@ class Replica_Manager:
                     pass
                 else:
                     print("RC >= SRN")
-                    if (self.SIMULTANEOUS_REPLICAS_NEEDED > self.task_manager.get_dispatched_count()):
+                    if (self.SIMULTANEOUS_REPLICAS_NEEDED > self.var_updater.get_dispatched_count()):
                         pass
                     else:                    
-                        if((self.task_manager.get_undispatched_count() * self.TASK_DURATION) > self.REMAINING_TIME()):
+                        if((self.var_updater.get_undispatched_count() * self.TASK_DURATION) > self.REMAINING_TIME()):
                             print("TC*TD > RT")
                             if (self.SIMULTANEOUS_REPLICAS_NEEDED < self.MAX_REPLICAS_ALLOWED):
                                 print("SRN < MAX")
@@ -190,7 +190,7 @@ class Replica_Manager:
                                 pass
             else:
                 print("UTC <= 0")
-                if (self.task_manager.get_finished_count() == self.task_manager.get_task_count()):
+                if (self.var_updater.get_finished_count() == self.var_updater.get_task_count()):
                     print("TC == FTC")
                     break 
                 else:
@@ -202,36 +202,3 @@ class Replica_Manager:
         print("Job Accomplished")
         self.stop_service()
         sys.exit()
-
-def check_positive(value):
-    ivalue = int(value)
-    if ivalue <= 0:
-         raise argparse.ArgumentTypeError("%s is an invalid positive int value" % value)
-    return ivalue
-
-def check_directory(ivalue):
-    path = Path(ivalue)
-    if ((not path.exists()) | (not path.is_dir())):    
-         raise argparse.ArgumentTypeError("%s doesn't exist or it isn't a directory" % ivalue)
-    return ivalue
-
-def getArgs():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--server", help="HTTP Server Address (Accessible from all VMs)", required=True)
-    parser.add_argument("--port"  , help="HTTP Server port, default = 8777", type=check_positive)
-    parser.add_argument("--image" , help="Client Docker Image ", required=True)
-    parser.add_argument("--min"   , help="Min Allowed Replicas, default = 1" , type=check_positive)
-    parser.add_argument("--max"   , help="Max Allowed Replicas, default = 10", type=check_positive)
-    parser.add_argument("--td"    , help="Single Task Duration (in seconds)", type=check_positive, required=True)
-    parser.add_argument("--jdl"   , help="Job (all tasks) deadline (in seconds)", type=check_positive, required=True)
-    parser.add_argument("--dir"   , help="Jobs directory, default = ./jobs")
-    parser.add_argument("--tc"    , help="Task Count", type=int)
-    parser.add_argument("--tasks" , help="Extended Tasks directory (JSON Files and Tasks' files), it overrides --tc", type=check_directory)
-    return parser.parse_args()
-
-if __name__ == "__main__":
-    args = getArgs()
-    print(args)
-    replica_manager = Replica_Manager(args)
-
-    replica_manager.start()
